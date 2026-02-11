@@ -1,0 +1,45 @@
+stages:
+  - build
+  - deploy
+
+variables:
+  REGISTRY: "192.168.1.152:5679"
+  IMAGE_NAME: "pg-vector"
+  IMAGE_TAG: "latest"
+  NAS02_HOST: "192.168.1.152"
+  NAS02_SSH_PORT: "52500"
+  NAS02_USER: "lichih"
+  DEPLOY_PATH: "/volume1/docker/pg-vector"
+
+# ── Build ────────────────────────────────────────────────────
+build-pg-vector:
+  stage: build
+  tags:
+    - shell
+  rules:
+    - changes:
+        - pg-vector/**/*
+  script:
+    - docker build -t ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG} -f pg-vector/Dockerfile pg-vector/
+    - docker push ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}
+
+# ── Deploy ───────────────────────────────────────────────────
+deploy-pg-vector:
+  stage: deploy
+  tags:
+    - shell
+  needs:
+    - build-pg-vector
+  rules:
+    - changes:
+        - pg-vector/**/*
+  script:
+    # Copy production files to NAS02
+    - scp -P ${NAS02_SSH_PORT} pg-vector/docker-compose.prod.yml ${NAS02_USER}@${NAS02_HOST}:${DEPLOY_PATH}/docker-compose.yml
+    - scp -P ${NAS02_SSH_PORT} pg-vector/.env.example ${NAS02_USER}@${NAS02_HOST}:${DEPLOY_PATH}/.env
+    - scp -P ${NAS02_SSH_PORT} pg-vector/init.sql ${NAS02_USER}@${NAS02_HOST}:${DEPLOY_PATH}/init.sql
+    # Pull new image and restart
+    - ssh -p ${NAS02_SSH_PORT} ${NAS02_USER}@${NAS02_HOST} "cd ${DEPLOY_PATH} && docker compose pull && docker compose up -d"
+    # Wait for healthcheck
+    - sleep 10
+    - curl -f http://${NAS02_HOST}:30805/healthcheck

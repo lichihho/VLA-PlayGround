@@ -1,0 +1,35 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: ${PG_USER:-pgvector}
+      POSTGRES_PASSWORD: ${PG_PASSWORD:-pgvector}
+      POSTGRES_DB: ${PG_DB:-vla}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER:-pgvector} -d ${PG_DB:-vla}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  api:
+    image: 192.168.1.152:5679/pg-vector:latest
+    ports:
+      - "${HOST_PORT:-30805}:8000"
+    environment:
+      DATABASE_URL: "postgresql://${PG_USER:-pgvector}:${PG_PASSWORD:-pgvector}@postgres:5432/${PG_DB:-vla}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/healthcheck"]
+      interval: 5m
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+volumes:
+  pgdata:

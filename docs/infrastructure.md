@@ -12,6 +12,7 @@
 │  │  - GitLab CE             :8929 (HTTP)            │    │
 │  │  - GitLab SSH            :2222                   │    │
 │  │  - NFS: /volume1/ai_data → /mnt/ai_data         │    │
+│  │  - pg-vector (Docker Compose)  :30805            │    │
 │  └─────────────────────────────────────────────────┘    │
 │                                                         │
 │  ┌───────────────── MicroK8s HA 叢集 ────────────────┐  │
@@ -34,13 +35,13 @@
 | K8s master | ub6-ai02 | 192.168.1.162 | 52522 | RTX 8000 | 64G | MicroK8s 主節點 |
 | K8s master / Runner | ub3 (lcl-ub3) | 192.168.1.157 | 52522 | RTX 8000 | 64G | 同時是 GitLab Runner |
 | K8s standby | labsl-dualgpu | 192.168.1.245 | 5250 | 2× RTX 3090 | 128G | 內網 SSH port 與其他節點不同 |
-| NAS / GitLab / Registry | nas02 (LCL-NAS-02) | 192.168.1.152 | 52500 | — | 31G | Synology NAS, Intel Xeon D-1527 |
+| NAS / GitLab / Registry | nas02 (LCL-NAS-02) | 192.168.1.152 | 52500 | — | 31G | Synology NAS, Intel Xeon D-1527, 同時運行 pg-vector |
 
 > 192.168.1.245 外網 IP 為 140.128.121.226:52522（路由器 port forwarding）。
 
 ## K8s 服務部署
 
-兩個服務皆部署在同一 K8s cluster (MicroK8s)。
+LaDeco 和 NAS File Server 部署在同一 K8s cluster (MicroK8s)。
 
 - NFS server：`192.168.1.152:/volume1/ai_data` → mount 至 `/mnt/ai_data`
 - Namespace：`ladeco`
@@ -51,11 +52,21 @@
 | LaDeco | `localhost:32000/ladeco-internal:latest` | `30800` | 1× NVIDIA |
 | NAS File Server | `192.168.1.152:5679/nas-files:latest` | `30803` | — |
 
+## Docker Compose 服務部署（NAS02）
+
+pg-vector 以 Docker Compose 直接部署在 NAS02 (192.168.1.152)，不經 K8s。
+
+| 服務 | Image | Port | 部署路徑 |
+|------|-------|------|----------|
+| pg-vector | `192.168.1.152:5679/pg-vector:latest` | `30805` | `/volume1/docker/pg-vector/` |
+
 ---
 
 ## Image 建置與部署流程
 
 ### 流程圖
+
+**K8s 服務（LaDeco, NAS File Server）：**
 
 ```
 開發者 (VS Code / Claude Code)
@@ -77,6 +88,27 @@ Docker Registry (192.168.1.152:5679)
 MicroK8s 叢集 (252, 162, 157, 245)
 ```
 
+**pg-vector（Docker Compose on NAS02）：**
+
+```
+開發者 (VS Code / Claude Code)
+   │
+   │ git push gitlab main (pg-vector/** 變更)
+   ▼
+GitLab (192.168.1.152:8929)
+   │
+   │ 觸發 CI/CD Pipeline
+   ▼
+GitLab Runner (192.168.1.157)
+   │
+   ├── build: docker build → push 192.168.1.152:5679/pg-vector:latest
+   │
+   └── deploy: SSH to NAS02 → docker compose pull → up -d
+          │
+          ▼
+   NAS02 (192.168.1.152) — Docker Compose
+```
+
 ### NAS File Server（GitLab CI/CD 自動化）
 
 `.gitlab-ci.yml` 定義 pipeline：GitLab push → Runner build image → push 到 NAS Registry → 手動觸發 deploy 到 K8s。
@@ -92,6 +124,21 @@ curl http://192.168.1.152:5679/v2/nas-files/tags/list
 
 # 4. 驗證服務
 curl http://192.168.1.162:30803/healthcheck
+```
+
+### pg-vector（GitLab CI/CD 自動化，VLA-PlayGround repo）
+
+`.gitlab-ci.yml`（VLA-PlayGround repo root）定義 pipeline：`pg-vector/**` 變更時自動 build image → push 到 NAS Registry → SSH deploy 到 NAS02。
+
+```bash
+# 1. Push 到 GitLab（pg-vector/ 下有變更時自動觸發 build + deploy）
+git push gitlab main
+
+# 2. 驗證 Registry 有 image
+curl http://192.168.1.152:5679/v2/pg-vector/tags/list
+
+# 3. 驗證服務
+curl http://192.168.1.152:30805/healthcheck
 ```
 
 ### LaDeco（手動部署）
@@ -203,7 +250,9 @@ services:
 | 接受未標記任務 | 是 |
 | 設定檔 | `/etc/gitlab-runner/config.toml` |
 
-Runner 透過 SSH 執行 K8s 部署：`gitlab-runner` 用戶的 SSH key (`~/.ssh/id_ed25519`) 已加入 K8s 主節點 (ub6-ai02) 的 `lichih` authorized_keys。CI 中以 `ssh -p 52522 lichih@192.168.1.162` 執行 kubectl。
+Runner 透過 SSH 執行部署：`gitlab-runner` 用戶的 SSH key (`~/.ssh/id_ed25519`) 已加入以下主機的 `lichih` authorized_keys：
+- K8s 主節點 (ub6-ai02, 192.168.1.162)：CI 中以 `ssh -p 52522` 執行 kubectl
+- NAS02 (192.168.1.152)：CI 中以 `ssh -p 52500` 執行 docker compose（pg-vector 部署）
 
 ### Runner 前置需求
 
@@ -289,8 +338,9 @@ ssh -p 52500 lichih@192.168.1.152
 |------|-----------|----------|--------|------|
 | LaDeco | SSE | `.mcp.json` → `http://192.168.1.162:30800/mcp/sse` | 9 | 景觀影像語意分割 |
 | NAS File Server | SSE | `.mcp.json` → `http://192.168.1.162:30803/mcp/sse` | 8 | NAS 檔案操作 |
+| pg-vector | SSE | `.mcp.json` → `http://192.168.1.152:30805/mcp/sse` | 13 | 研究資料庫 + 向量搜尋 |
 
-兩個服務也支援 stdio transport（`python mcp_server.py`），供本機開發使用。
+三個服務也支援 stdio transport（`python mcp_server.py`），供本機開發使用。
 
 ### REST API 服務
 
@@ -298,6 +348,7 @@ ssh -p 52500 lichih@192.168.1.152
 |------|------|------------|----------|------|
 | LaDeco | `http://192.168.1.162:30800/api/` | `/api/docs` | `/healthcheck` | 影像推論、批次分析、視覺化、資料集管理 |
 | NAS File Server | `http://192.168.1.162:30803/api/` | `/api/docs` | `/healthcheck` | 檔案 CRUD、搜尋、多檔上傳 |
+| pg-vector | `http://192.168.1.152:30805/api/` | `/api/docs` | `/healthcheck` | 研究專案、影像中繼資料、向量搜尋 |
 | GitLab | `http://192.168.1.152:8929/api/v4/` | — | — | GitLab REST API（需 Personal Access Token） |
 | Docker Registry | `http://192.168.1.152:5679/v2/` | — | — | Docker Registry v2 API（查詢/管理 image） |
 
@@ -312,9 +363,14 @@ curl http://192.168.1.162:30803/api/files?path=.
 curl -X POST http://192.168.1.162:30803/api/upload/dataset_name -F "files=@photo.jpg"
 
 # GitLab API（需 token）
-curl --header "PRIVATE-TOKEN: <token>" http://192.168.1.152:8929/api/v4/projects/3/pipelines
+curl --header "PRIVATE-TOKEN: <token>" http://192.168.1.152:8929/api/v4/projects/4/pipelines
+
+# pg-vector API
+curl http://192.168.1.152:30805/api/projects
+curl http://192.168.1.152:30805/healthcheck
 
 # Docker Registry API
 curl http://192.168.1.152:5679/v2/_catalog
 curl http://192.168.1.152:5679/v2/nas-files/tags/list
+curl http://192.168.1.152:5679/v2/pg-vector/tags/list
 ```
