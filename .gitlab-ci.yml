@@ -39,7 +39,7 @@ deploy-pg-vector:
     - scp -P ${NAS02_SSH_PORT} pg-vector/.env.example ${NAS02_USER}@${NAS02_HOST}:${DEPLOY_PATH}/.env
     - scp -P ${NAS02_SSH_PORT} pg-vector/init.sql ${NAS02_USER}@${NAS02_HOST}:${DEPLOY_PATH}/init.sql
     # Pull new image and restart
-    - ssh -p ${NAS02_SSH_PORT} ${NAS02_USER}@${NAS02_HOST} "cd ${DEPLOY_PATH} && docker compose pull && docker compose up -d"
+    - ssh -p ${NAS02_SSH_PORT} ${NAS02_USER}@${NAS02_HOST} "export PATH=/usr/local/bin:\$PATH && cd ${DEPLOY_PATH} && docker compose pull && docker compose up -d"
     # Wait for healthcheck
     - sleep 10
     - curl -f http://${NAS02_HOST}:30805/healthcheck
