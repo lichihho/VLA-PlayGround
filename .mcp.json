@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "nas-files": {
+      "type": "sse",
+      "url": "http://192.168.1.162:30803/mcp/sse"
+    },
+    "ladeco": {
+      "type": "sse",
+      "url": "http://192.168.1.162:30800/mcp/sse"
+    }
+  }
+}
