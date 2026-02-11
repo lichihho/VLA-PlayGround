@@ -1,2 +1,17 @@
 # Claude Code local settings (machine-specific permissions)
 .claude/settings.local.json
+
+# Environment variables
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Jupyter Notebook checkpoints
+notebooks/.ipynb_checkpoints/
+
+# OS files
+.DS_Store
+Thumbs.db

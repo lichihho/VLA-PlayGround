@@ -120,7 +120,25 @@ LaDeco 使用自訂的 4 層階層標籤系統，從粗到細：
 | 分類數 | ADE20K 150 類 → LaDeco 4 層階層 |
 | 指標 | LC_NFI（自然特徵指數）= 自然面積比例 |
 | 服務位址 | LaDeco `192.168.1.162:30800`、NAS `192.168.1.162:30803` |
-| REST API 文件 | 詳見 `api-reference.md` 或 Swagger UI (`/api/docs`) |
+| REST API 文件 | Swagger UI (`/api/docs`) 或 `docs/services/` 下的服務文件 |
+
+---
+
+## 詳細文件
+
+想深入了解各服務架構、REST API 端點、部署流程等細節，可參考 `docs/` 目錄：
+
+| 文件 | 內容 |
+|------|------|
+| `docs/services/ladeco.md` | LaDeco 架構、REST API Reference、部署步驟 |
+| `docs/services/nas-files.md` | NAS File Server 架構、REST API Reference、部署步驟 |
+| `docs/infrastructure.md` | 基礎設施總覽（主機 IP、K8s、GitLab CI/CD） |
+
+你可以直接請 Claude 讀取這些文件，例如：
+
+> 「幫我看一下 LaDeco 的 REST API 文件」
+>
+> 「K8s 叢集的 IP 是什麼？」
 
 ---
 

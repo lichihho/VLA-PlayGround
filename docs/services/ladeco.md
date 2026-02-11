@@ -1,10 +1,130 @@
-# REST API 參考文件
+# LaDeco — 景觀影像語意分割服務
 
-LaDeco REST API 掛載於 `/api` 路徑下，由 `api_server.py` 提供。
+## Overview
+
+LaDeco (Landscape Decoration) is a landscape image semantic segmentation tool based on the OneFormer model (ADE20K dataset). It maps ADE20K's 150 classes into a custom 4-level hierarchical label system (L1–L4) and computes area ratios plus a Natural Feature Index (LC_NFI).
+
+Reference: Li-Chih Ho (2023), *LaDeco: A Tool to Analyze Visual Landscape Elements*, Ecological Informatics, vol. 78.
+
+## Architecture
+
+Three-layer architecture:
+
+```
+┌──────────────────────────────────────────────┐
+│  Interface Layer（介面層）                     │
+│  ├── mcp_server.py      → Claude Code (MCP)  │
+│  └── api_server.py      → REST API (FastAPI) │
+├──────────────────────────────────────────────┤
+│  Service Layer（服務層）                       │
+│  └── service.py         → 業務邏輯            │
+├──────────────────────────────────────────────┤
+│  Core Layer（核心層）                          │
+│  └── engine.py          → 模型推論            │
+└──────────────────────────────────────────────┘
+
+server.py  → 統一入口：掛載 REST API (/api) + MCP SSE (/mcp)
+core.py    → 向後相容 shim (from engine import *)
+```
+
+### engine.py
+
+The `Ladeco` class loads `shi-labs/oneformer_ade20k_swin_large` and exposes `predict()`. Returns a `LadecoOutput` object with:
+- `visualize(level)` → colored segmentation maps as matplotlib Figures
+- `area()` → per-image dict of all label area ratios + `others` + `LC_NFI`
+- `color_map(level)` / `color_legend(level)` → viridis-based coloring (available both on `Ladeco` and `LadecoOutput`)
+
+Module-level `_build_color_map()` and `_build_color_legend()` are shared by both classes.
+
+The label hierarchy is built bottom-up in `_get_ladeco_labels()`: L4 labels map to ADE20K indices, then L3/L2/L1 aggregate by tuple concatenation.
+
+### service.py
+
+Business logic layer (model singleton, inference pipelines, CSV export, dataset listing, chart plotting). Key functions:
+- `predict_batch(dataset, callback)` → `BatchResult` dataclass
+- `predict_images(paths, callback)` → list of area dicts
+- `visualize_image(path, level)` → (Figure, area_dict)
+- `get_area(path, level)` → area dict (no visualization)
+- `list_datasets()` / `preview_dataset(name)` → NAS dataset browsing
+- `get_color_legend(level)` / `get_label_hierarchy()` → metadata
+- `fig2img(fig)` / `plot_pie(data, colors)` → chart utilities
+
+### api_server.py
+
+REST API endpoints (mounted at `/api` by server.py). See [REST API Reference](#rest-api-reference) below.
+
+### mcp_server.py
+
+9 MCP tools for Claude Code (stdio transport):
+`predict`, `predict_batch`, `predict_images`, `visualize`, `get_area`, `list_datasets`, `preview_dataset`, `get_color_legend`, `get_label_hierarchy`
+
+MCP tool behavior: `predict`, `predict_images`, `get_area` default to `level=2` (L2). Tool docstrings instruct Claude to ask the user which hierarchy level (L1–L4) they need before calling; if the user does not specify, use the default L2.
+
+### server.py
+
+Unified entry point: mounts REST API at `/api`, MCP SSE at `/mcp`, healthcheck at `/healthcheck`.
+
+## Build & Run
+
+```bash
+# Build Docker image
+docker build -t lclab/ladeco-internal:v0.0.1 -t lclab/ladeco-internal:latest .
+
+# Run with GPU and NAS mount
+docker run --rm -ti --gpus all -v /path/to/datasets:/mnt/ai_data -p 127.0.0.1:8000:8000 lclab/ladeco-internal
+
+# Run via Docker Compose (reads .env for HOST_IP, HOST_PORT, DATABASES_ROOT)
+docker compose up
+
+# Run locally without Docker (requires CUDA-capable GPU or will fall back to CPU)
+pip install -r requirements.txt
+python server.py  # serves on http://127.0.0.1:8000
+
+# Run MCP server (stdio, for Claude Code)
+python mcp_server.py
+```
+
+## Deployment
+
+部署在 K8s cluster (MicroK8s)，詳見 [infrastructure.md](../infrastructure.md)。
+
+| 項目 | 值 |
+|------|---|
+| Image | `localhost:32000/ladeco-internal:latest` |
+| NodePort | `30800` |
+| GPU | 1× NVIDIA |
+
+```bash
+# 1. 複製原始碼到 K8s 節點（根目錄下所有 .py + Dockerfile + requirements.txt）
+scp -P 52522 {Dockerfile,requirements.txt,server.py,engine.py,core.py,service.py,mcp_server.py,api_server.py} \
+  192.168.1.162:/tmp/ladeco-build/
+
+# 2. Build 並 push
+ssh -p 52522 192.168.1.162 "cd /tmp/ladeco-build && \
+  docker build -t localhost:32000/ladeco-internal:latest . && \
+  docker push localhost:32000/ladeco-internal:latest"
+
+# 3. Rollout restart
+ssh -p 52522 192.168.1.162 "microk8s kubectl rollout restart deployment/ladeco -n ladeco"
+
+# 4. 驗證
+curl http://192.168.1.162:30800/healthcheck
+```
+
+另有舊版部署工具（非 K8s）：
+- **deploy.sh** — 首次安裝，建立 systemd service
+- **ci_cd.sh** — `deploy`, `update`, `rollback`, `status`, `logs`
+- **GitHub Actions** (`.github/workflows/deploy.yml`) — 手動觸發 → Docker Hub → SSH 部署
+
+---
+
+## REST API Reference
 
 Base URL: `http://<host>:<port>/api`
 
-## `level` 參數說明
+Swagger UI: `/api/docs`
+
+### `level` 參數說明
 
 多數端點支援 `level` 參數，用於指定分析的標籤階層層級：
 
@@ -17,8 +137,6 @@ Base URL: `http://<host>:<port>/api`
 
 - **面積資料端點**（`/predict`）：`level` 為選填，省略時回傳 L1-L4 全部；指定時只回傳該階層的面積比例。
 - **視覺化端點**（`/visualize`、`/predict/batch`）：`level` 決定分割圖與圓餅圖使用的階層，預設為 2。
-
-## Endpoints
 
 ### POST `/api/predict`
 
@@ -88,8 +206,6 @@ curl -X POST -F "file=@examples/field.jpg" http://localhost:8000/api/predict
 curl -X POST -F "file=@examples/field.jpg" "http://localhost:8000/api/predict?level=3"
 ```
 
----
-
 ### POST `/api/predict/batch`
 
 批次推論 NAS 資料集中的所有影像。
@@ -143,8 +259,6 @@ curl -X POST -H "Content-Type: application/json" \
   http://localhost:8000/api/predict/batch
 ```
 
----
-
 ### POST `/api/visualize`
 
 上傳單張影像，回傳語意分割圖（base64 PNG）與面積比例。
@@ -183,8 +297,6 @@ curl -X POST -F "file=@examples/field.jpg" \
   "http://localhost:8000/api/visualize?level=4"
 ```
 
----
-
 ### GET `/api/datasets`
 
 列出 NAS 上所有可用的資料集。
@@ -201,8 +313,6 @@ curl -X POST -F "file=@examples/field.jpg" \
 ```bash
 curl http://localhost:8000/api/datasets
 ```
-
----
 
 ### GET `/api/datasets/{name}/preview`
 
@@ -227,8 +337,6 @@ curl http://localhost:8000/api/datasets
 curl "http://localhost:8000/api/datasets/campus_photos/preview?max_items=5"
 ```
 
----
-
 ### GET `/api/download/{filename}`
 
 下載推論結果的 CSV 檔案。
@@ -245,8 +353,6 @@ curl "http://localhost:8000/api/datasets/campus_photos/preview?max_items=5"
 curl -O "http://localhost:8000/api/download/LaDeco-field.jpg-2024Jan01-120000-xxxxx.csv"
 ```
 
----
-
 ### GET `/healthcheck`
 
 健康檢查端點（位於根路徑，非 `/api` 下）。
@@ -256,7 +362,7 @@ curl -O "http://localhost:8000/api/download/LaDeco-field.jpg-2024Jan01-120000-xx
 {"msg": "ladeco is alive"}
 ```
 
-## 錯誤回應
+### 錯誤回應
 
 所有錯誤以 JSON 格式回傳：
 
