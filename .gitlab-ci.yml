@@ -19,6 +19,7 @@ build-pg-vector:
   rules:
     - changes:
         - pg-vector/**/*
+        - .gitlab-ci.yml
   script:
     - docker build -t ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG} -f pg-vector/Dockerfile pg-vector/
     - docker push ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}
@@ -33,6 +34,7 @@ deploy-pg-vector:
   rules:
     - changes:
         - pg-vector/**/*
+        - .gitlab-ci.yml
   script:
     # Copy production files to NAS02
     - scp -P ${NAS02_SSH_PORT} pg-vector/docker-compose.prod.yml ${NAS02_USER}@${NAS02_HOST}:${DEPLOY_PATH}/docker-compose.yml
