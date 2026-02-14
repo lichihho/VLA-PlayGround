@@ -289,8 +289,19 @@ def list_dataset_images(
     dataset_id: int,
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
+    dim: str | None = Query(None, description="Filter by dim metadata field"),
+    count_only: bool = Query(False, description="Return only count"),
 ):
-    return JSONResponse(content=service.list_dataset_images(dataset_id, limit, offset))
+    metadata_filter = {}
+    if dim is not None:
+        metadata_filter["dim"] = dim
+    return JSONResponse(
+        content=service.list_dataset_images(
+            dataset_id, limit, offset,
+            metadata_filter if metadata_filter else None,
+            count_only,
+        ),
+    )
 
 
 # ── Image Descriptions ──────────────────────────────────────────────

@@ -331,18 +331,30 @@ def add_image_to_dataset(dataset_id: int, image_id: int, metadata: dict | None =
 
 
 @mcp.tool()
-def list_dataset_images(dataset_id: int, limit: int = 50, offset: int = 0) -> str:
+def list_dataset_images(
+    dataset_id: int,
+    limit: int = 50,
+    offset: int = 0,
+    metadata_filter: dict | None = None,
+    count_only: bool = False,
+) -> str:
     """List images in a dataset with their curation metadata.
 
     Args:
         dataset_id: The dataset ID.
         limit: Maximum number of images to return. Defaults to 50.
         offset: Number of images to skip. Defaults to 0.
+        metadata_filter: Filter by metadata fields using JSONB containment (@>).
+                         Example: {"dim": "mountains"} returns only mountain images.
+        count_only: If True, return only the count instead of image list.
 
     Returns:
-        JSON array of images with dataset_metadata.
+        JSON array of images with dataset_metadata, or {"count": N} if count_only.
     """
-    return json.dumps(service.list_dataset_images(dataset_id, limit, offset), ensure_ascii=False)
+    return json.dumps(
+        service.list_dataset_images(dataset_id, limit, offset, metadata_filter, count_only),
+        ensure_ascii=False,
+    )
 
 
 # ── Image Descriptions ───────────────────────────────────────────────

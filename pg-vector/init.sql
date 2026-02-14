@@ -61,6 +61,7 @@ CREATE TABLE IF NOT EXISTS dataset_images (
 );
 
 CREATE INDEX IF NOT EXISTS idx_dataset_images_image ON dataset_images (image_id);
+CREATE INDEX IF NOT EXISTS idx_dataset_images_metadata ON dataset_images USING gin (metadata);
 
 -- image_descriptions: LLM-generated text descriptions with text embeddings
 CREATE TABLE IF NOT EXISTS image_descriptions (

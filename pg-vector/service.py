@@ -493,19 +493,46 @@ def list_dataset_images(
     dataset_id: int,
     limit: int = 50,
     offset: int = 0,
-) -> list[dict]:
-    """List images in a dataset with their curation metadata."""
+    metadata_filter: dict | None = None,
+    count_only: bool = False,
+) -> list[dict] | dict:
+    """List images in a dataset with their curation metadata.
+
+    Args:
+        metadata_filter: JSONB containment filter, e.g. {"dim": "mountains"}
+                         uses PostgreSQL @> operator with GIN index.
+        count_only: If True, return {"count": N} instead of image list.
+    """
     if not (1 <= limit <= 500):
         raise ValueError("limit must be between 1 and 500")
+
+    conditions = ["di.dataset_id = %s"]
+    params: list = [dataset_id]
+
+    if metadata_filter:
+        conditions.append("di.metadata @> %s::jsonb")
+        params.append(json.dumps(metadata_filter))
+
+    where = " WHERE " + " AND ".join(conditions)
+
     with db.get_conn() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
+            if count_only:
+                cur.execute(
+                    "SELECT COUNT(*) AS count "
+                    "FROM dataset_images di " + where,
+                    params,
+                )
+                return dict(cur.fetchone())
+
+            params.extend([limit, offset])
             cur.execute(
                 "SELECT i.*, di.metadata AS dataset_metadata "
                 "FROM dataset_images di "
                 "JOIN images i ON i.image_id = di.image_id "
-                "WHERE di.dataset_id = %s "
-                "ORDER BY i.image_id LIMIT %s OFFSET %s",
-                (dataset_id, limit, offset),
+                + where +
+                " ORDER BY i.image_id LIMIT %s OFFSET %s",
+                params,
             )
             rows = cur.fetchall()
     return [_serialize_row(r) for r in rows]
