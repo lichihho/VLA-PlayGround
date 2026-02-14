@@ -493,14 +493,16 @@ def list_dataset_images(
     dataset_id: int,
     limit: int = 50,
     offset: int = 0,
-    metadata_filter: dict | None = None,
+    metadata_filter: dict | list[dict] | None = None,
     count_only: bool = False,
 ) -> list[dict] | dict:
     """List images in a dataset with their curation metadata.
 
     Args:
-        metadata_filter: JSONB containment filter, e.g. {"dim": "mountains"}
-                         uses PostgreSQL @> operator with GIN index.
+        metadata_filter: JSONB containment filter using PostgreSQL @> operator.
+            - dict: single filter, e.g. {"dim": "mountains"} → AND
+            - list[dict]: multiple filters combined with OR,
+              e.g. [{"dim": "forest"}, {"dim": "water"}] → matches either
         count_only: If True, return {"count": N} instead of image list.
     """
     if not (1 <= limit <= 500):
@@ -510,8 +512,15 @@ def list_dataset_images(
     params: list = [dataset_id]
 
     if metadata_filter:
-        conditions.append("di.metadata @> %s::jsonb")
-        params.append(json.dumps(metadata_filter))
+        if isinstance(metadata_filter, list):
+            or_parts = []
+            for f in metadata_filter:
+                or_parts.append("di.metadata @> %s::jsonb")
+                params.append(json.dumps(f))
+            conditions.append("(" + " OR ".join(or_parts) + ")")
+        else:
+            conditions.append("di.metadata @> %s::jsonb")
+            params.append(json.dumps(metadata_filter))
 
     where = " WHERE " + " AND ".join(conditions)
 

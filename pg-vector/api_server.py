@@ -289,16 +289,19 @@ def list_dataset_images(
     dataset_id: int,
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
-    dim: str | None = Query(None, description="Filter by dim metadata field"),
+    dim: list[str] | None = Query(None, description="Filter by dim metadata field (repeatable for OR)"),
     count_only: bool = Query(False, description="Return only count"),
 ):
-    metadata_filter = {}
+    metadata_filter = None
     if dim is not None:
-        metadata_filter["dim"] = dim
+        if len(dim) == 1:
+            metadata_filter = {"dim": dim[0]}
+        else:
+            metadata_filter = [{"dim": d} for d in dim]
     return JSONResponse(
         content=service.list_dataset_images(
             dataset_id, limit, offset,
-            metadata_filter if metadata_filter else None,
+            metadata_filter,
             count_only,
         ),
     )

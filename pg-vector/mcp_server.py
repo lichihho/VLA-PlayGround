@@ -335,7 +335,7 @@ def list_dataset_images(
     dataset_id: int,
     limit: int = 50,
     offset: int = 0,
-    metadata_filter: dict | None = None,
+    metadata_filter: dict | list[dict] | None = None,
     count_only: bool = False,
 ) -> str:
     """List images in a dataset with their curation metadata.
@@ -345,7 +345,8 @@ def list_dataset_images(
         limit: Maximum number of images to return. Defaults to 50.
         offset: Number of images to skip. Defaults to 0.
         metadata_filter: Filter by metadata fields using JSONB containment (@>).
-                         Example: {"dim": "mountains"} returns only mountain images.
+            - Single dict: {"dim": "mountains, hills, desert, sky"}
+            - List of dicts (OR): [{"dim": "water, ice, snow"}, {"dim": "forest, field, jungle"}]
         count_only: If True, return only the count instead of image list.
 
     Returns:
