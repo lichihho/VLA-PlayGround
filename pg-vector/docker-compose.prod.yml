@@ -6,7 +6,7 @@ services:
       POSTGRES_PASSWORD: ${PG_PASSWORD:-pgvector}
       POSTGRES_DB: ${PG_DB:-vla}
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - ./pgdata:/var/lib/postgresql/data
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${PG_USER:-pgvector} -d ${PG_DB:-vla}"]
@@ -30,6 +30,3 @@ services:
       timeout: 10s
       retries: 3
     restart: unless-stopped
-
-volumes:
-  pgdata:

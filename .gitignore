@@ -4,6 +4,11 @@
 # Environment variables
 .env
 
+# PostgreSQL data (bind mount) and backups
+pg-vector/pgdata/
+*.sql.bak
+backup_*.sql
+
 # Python
 __pycache__/
 *.pyc
