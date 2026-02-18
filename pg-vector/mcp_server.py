@@ -368,7 +368,7 @@ def create_questionnaire(
     description: str | None = None,
     prompt_template: str | None = None,
     scale_min: int = 1,
-    scale_max: int = 4,
+    scale_max: int = 5,
 ) -> str:
     """Create a new questionnaire (reusable survey template for PRBot).
 
@@ -378,7 +378,7 @@ def create_questionnaire(
         description: Brief description of the questionnaire.
         prompt_template: Prompt template for LLM-based evaluation.
         scale_min: Minimum scale value (default 1).
-        scale_max: Maximum scale value (default 4).
+        scale_max: Maximum scale value (default 5).
 
     Returns:
         JSON object with the created questionnaire details.

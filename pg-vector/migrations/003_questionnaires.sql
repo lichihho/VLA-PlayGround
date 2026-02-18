@@ -9,6 +9,6 @@ CREATE TABLE IF NOT EXISTS questionnaires (
     questions         JSONB NOT NULL,
     prompt_template   TEXT,
     scale_min         INTEGER NOT NULL DEFAULT 1,
-    scale_max         INTEGER NOT NULL DEFAULT 4,
+    scale_max         INTEGER NOT NULL DEFAULT 5,
     created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );

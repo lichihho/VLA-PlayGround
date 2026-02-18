@@ -101,7 +101,7 @@ class QuestionnaireCreate(BaseModel):
     description: str | None = None
     prompt_template: str | None = None
     scale_min: int = 1
-    scale_max: int = 4
+    scale_max: int = 5
 
 
 class SimilarDescriptionSearch(BaseModel):
