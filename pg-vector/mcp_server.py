@@ -1,9 +1,10 @@
 """MCP server for pg-vector — thin wrapper over service.py.
 
-Run: python mcp_server.py              (stdio transport, default)
-     python mcp_server.py --transport sse   (standalone SSE server on port 8001)
+Run: python mcp_server.py                              (stdio transport, default)
+     python mcp_server.py --transport sse               (standalone SSE server)
+     python mcp_server.py --transport streamable-http   (standalone HTTP server)
 
-When integrated with server.py, use mount_mcp_sse(app) to mount at /mcp.
+When integrated with server.py, use mount_mcp(app) to mount at /mcp.
 """
 
 import json
@@ -495,18 +496,23 @@ def delete_image_description(description_id: int) -> str:
     return json.dumps(service.delete_image_description(description_id), ensure_ascii=False)
 
 
-def mount_mcp_sse(app):
-    """Mount MCP SSE endpoints onto a FastAPI/Starlette app at /mcp.
+def mount_mcp(app):
+    """Mount MCP Streamable HTTP endpoint onto a FastAPI/Starlette app at /mcp.
 
-    After mounting, the SSE endpoint is available at /mcp/sse
-    and the message endpoint at /mcp/messages/.
+    After mounting, the MCP endpoint is available at /mcp.
+    Uses Streamable HTTP transport (replaces deprecated SSE).
     """
     from mcp.server.transport_security import TransportSecuritySettings
 
     mcp.settings.transport_security = TransportSecuritySettings(
         enable_dns_rebinding_protection=False,
     )
-    app.mount("/mcp", mcp.sse_app())
+    mcp.settings.streamable_http_path = "/"
+    app.mount("/mcp", mcp.streamable_http_app())
+
+
+# Backward compat alias
+mount_mcp_sse = mount_mcp
 
 
 if __name__ == "__main__":
@@ -515,7 +521,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="pg-vector MCP Server")
     parser.add_argument(
         "--transport",
-        choices=["stdio", "sse"],
+        choices=["stdio", "sse", "streamable-http"],
         default="stdio",
         help="Transport mode (default: stdio)",
     )
@@ -523,5 +529,7 @@ if __name__ == "__main__":
 
     if args.transport == "sse":
         mcp.run(transport="sse")
+    elif args.transport == "streamable-http":
+        mcp.run(transport="streamable-http")
     else:
         mcp.run(transport="stdio")

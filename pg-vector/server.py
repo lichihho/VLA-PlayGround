@@ -1,4 +1,4 @@
-"""Unified entry point — mounts MCP SSE (/mcp) and REST API (/api)."""
+"""Unified entry point — mounts MCP (/mcp) and REST API (/api)."""
 
 from contextlib import asynccontextmanager
 
@@ -6,7 +6,7 @@ from fastapi import FastAPI
 
 import db
 from api_server import app as api_app
-from mcp_server import mount_mcp_sse
+from mcp_server import mount_mcp
 
 
 @asynccontextmanager
@@ -18,7 +18,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 app.mount("/api", api_app)
-mount_mcp_sse(app)
+mount_mcp(app)
 
 
 @app.get("/healthcheck")
