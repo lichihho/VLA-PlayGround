@@ -516,7 +516,8 @@ def mount_mcp(app):
 
     # Starlette does not propagate lifespan events to mounted sub-apps,
     # so we wrap the parent app's lifespan to start the MCP session manager.
-    _original_lifespan = app.router.lifespan_handler
+    _attr = "lifespan_handler" if hasattr(app.router, "lifespan_handler") else "lifespan_context"
+    _original_lifespan = getattr(app.router, _attr, None)
 
     @contextlib.asynccontextmanager
     async def _wrapped_lifespan(a):
@@ -528,7 +529,7 @@ def mount_mcp(app):
             async with mcp.session_manager.run():
                 yield
 
-    app.router.lifespan_handler = _wrapped_lifespan
+    setattr(app.router, _attr, _wrapped_lifespan)
 
 
 # Backward compat alias
